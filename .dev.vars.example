@@ -1,0 +1,4 @@
+# Example Worker env vars for local dev.
+# Copy to `.dev.vars` and add any secrets your Worker needs.
+
+EXAMPLE_SECRET=replace_me

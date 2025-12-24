@@ -1,0 +1,52 @@
+{
+  "name": "templates-frontend",
+  "description": "Vite + React + TypeScript + Tailwind + Cloudflare Worker starter.",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node node_modules/vite/bin/vite.js",
+    "dev:full": "node node_modules/concurrently/dist/bin/concurrently.js -k -n worker,vite -c blue,magenta \"npm run dev:worker\" \"npm run dev\"",
+    "ensure:dist": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\"",
+    "dev:worker": "npm run ensure:dist && node node_modules/wrangler/bin/wrangler.js dev --config wrangler.dev.toml",
+    "build": "node node_modules/vite/bin/vite.js build",
+    "preview": "node node_modules/vite/bin/vite.js preview",
+    "deploy:cf": "node node_modules/wrangler/bin/wrangler.js deploy",
+    "dev:cf": "node node_modules/wrangler/bin/wrangler.js dev",
+    "typecheck": "node node_modules/typescript/bin/tsc -p tsconfig.json",
+    "lint": "node node_modules/eslint/bin/eslint.js .",
+    "lint:fix": "node node_modules/eslint/bin/eslint.js . --fix",
+    "format": "node node_modules/prettier/bin/prettier.cjs --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
+    "format:check": "node node_modules/prettier/bin/prettier.cjs --check \"**/*.{js,jsx,ts,tsx,json,css,md}\""
+  },
+  "dependencies": {
+    "lucide-react": "^0.555.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "react-router-dom": "^7.10.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241230.0",
+    "@eslint/js": "^9.39.1",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.48.1",
+    "@typescript-eslint/parser": "^8.48.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.7.4",
+    "tailwindcss": "^4.1.18",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "wrangler": "^4.56.0"
+  }
+}

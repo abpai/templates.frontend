@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Frontend Starter</title>
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta
+      name="description"
+      content="A modern frontend starter: Vite, React, TypeScript, Tailwind, and Cloudflare Workers."
+    />
+    <meta name="theme-color" content="#22d3ee" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400&family=Inter:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <script>
+      ;(() => {
+        const storageKey = "theme"
+        const stored = localStorage.getItem(storageKey)
+        const preference =
+          stored === "light" || stored === "dark" || stored === "system" ? stored : "system"
+        const system = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+        const resolved = preference === "system" ? system : preference
+        document.documentElement.classList.toggle("dark", resolved === "dark")
+        document.documentElement.style.colorScheme = resolved
+      })()
+    </script>
+  </head>
+  <body class="bg-white text-slate-800 antialiased transition-colors duration-300 dark:bg-dark-base dark:text-zinc-200">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

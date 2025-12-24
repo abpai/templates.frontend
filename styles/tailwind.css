@@ -1,0 +1,40 @@
+@config "../tailwind.config.cjs";
+@import 'tailwindcss';
+
+@custom-variant dark (.dark &);
+
+@layer base {
+  body {
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #52525b;
+  }
+
+  ::selection {
+    background: #bfdbfe;
+    color: #1e3a8a;
+  }
+  .dark ::selection {
+    background: rgba(34, 211, 238, 0.3);
+    color: #fafafa;
+  }
+}

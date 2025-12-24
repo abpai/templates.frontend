@@ -1,0 +1,18 @@
+name = "frontend-starter"
+main = "worker/index.ts"
+compatibility_date = "2025-12-04"
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = "npm run build"
+
+[assets]
+directory = "dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# Optional D1 database binding (enables /api/todos)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "app-db"
+# database_id = "REPLACE_ME"

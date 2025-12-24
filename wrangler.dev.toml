@@ -1,0 +1,21 @@
+name = "frontend-starter"
+main = "worker/index.ts"
+compatibility_date = "2025-12-04"
+compatibility_flags = ["nodejs_compat"]
+
+# No [build] section - skip asset rebuilding for local dev
+# Vite dev server handles frontend, Worker only serves API
+
+[assets]
+directory = "dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# Optional D1 database binding (enables /api/todos)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "app-db"
+# database_id = "REPLACE_ME"
+
+# Secrets are loaded from .dev.vars file (not committed to git)
+# See .dev.vars.example for examples
