@@ -24,6 +24,7 @@ import {
 } from '@screenpipe/services'
 import { SmartAudio } from '../components/SmartAudio'
 import { DEFAULT_TRIGGER_APPS, type TriggerApp } from '../hooks/useAppMonitor'
+import { useDeveloperMode } from '../hooks/useDeveloperMode'
 import { useTheme } from '../hooks/useTheme'
 
 const PROVIDERS: Array<{
@@ -340,6 +341,7 @@ const SettingsPage: React.FC = () => {
   const [smartAudioApps, setSmartAudioApps] = useState<TriggerApp[]>(DEFAULT_TRIGGER_APPS)
 
   const { preference, setPreference } = useTheme()
+  const { enabled: developerMode, setEnabled: setDeveloperMode } = useDeveloperMode()
 
   useEffect(() => {
     let active = true
@@ -931,6 +933,12 @@ const SettingsPage: React.FC = () => {
           isOpen={openSection === 'developer'}
           onToggle={() => toggleSection('developer')}
         >
+          <ToggleField
+            label="Developer mode"
+            description="Show legacy pipes and advanced options."
+            checked={developerMode}
+            onChange={(value) => setDeveloperMode(value)}
+          />
           <TextField
             label="Backend URL"
             value={config.backendUrl ?? ''}
