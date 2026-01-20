@@ -12,10 +12,13 @@ import {
 } from 'lucide-react'
 import {
   loadConfig,
+  setTrajectoryLaunchAgentEnabled,
   testAIProviderConnection,
   testBackendConnection,
   validateConfig,
   writeConfig,
+  StorageService,
+  type StorageStatus,
   type AIProvider,
   type AIProviderConfig,
   type AIProviderSettings,
@@ -99,13 +102,23 @@ const DEFAULT_CONFIG: ScreenpipeConfig = {
   appearance: {
     theme: 'system',
   },
+  app: {
+    startOnLogin: false,
+  },
+  trajectory: {
+    roots: [],
+    ignore: [],
+    idleThresholdS: 30,
+    maxBlobBytes: 200000,
+    maxHashBytes: 2000000,
+  },
 }
 
 type Section = 'recording' | 'storage' | 'ai' | 'appearance' | 'developer'
 type ThemeOption = 'system' | 'light' | 'dark'
 const SMART_AUDIO_STORAGE_KEY = 'screenpipe-smart-audio'
 
-type ConnectionState = 'idle' | 'testing' | 'success' | 'error'
+type ConnectionState = 'idle' | 'testing' | 'success' | 'warning' | 'error'
 
 interface ProviderStatus {
   state: ConnectionState
@@ -153,11 +166,26 @@ function mergeConfig(base: ScreenpipeConfig, override: ScreenpipeConfig): Screen
       ...base.appearance,
       ...override.appearance,
     },
+    app: {
+      ...base.app,
+      ...override.app,
+    },
+    trajectory: {
+      ...base.trajectory,
+      ...override.trajectory,
+    },
     cli: {
       ...base.cli,
       ...override.cli,
     },
   }
+}
+
+function parseList(value: string): string[] {
+  return value
+    .split(/\r?\n|,/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
 }
 
 function mapTriggerApps(selectedApps: string[]): TriggerApp[] {
@@ -289,6 +317,39 @@ function TextField({
   )
 }
 
+function TextAreaField({
+  label,
+  value,
+  placeholder,
+  onChange,
+  helper,
+}: {
+  label: string
+  value: string
+  placeholder?: string
+  onChange: (value: string) => void
+  helper?: string
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <label className="text-sm text-zinc-400 whitespace-nowrap">{label}</label>
+        {helper && <p className="text-xs text-zinc-500 mt-1 max-w-[240px]">{helper}</p>}
+      </div>
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        className="flex-1 max-w-[260px] px-3 py-2 rounded-lg
+          border border-dark-border
+          bg-dark-elevated text-zinc-100
+          text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+      />
+    </div>
+  )
+}
+
 function ToggleField({
   label,
   description,
@@ -324,6 +385,14 @@ function ToggleField({
   )
 }
 
+function formatBytes(bytes: number): string {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const index = Math.floor(Math.log(bytes) / Math.log(1024))
+  const value = bytes / 1024 ** index
+  return `${value.toFixed(1)} ${units[index]}`
+}
+
 const SettingsPage: React.FC = () => {
   const [openSection, setOpenSection] = useState<Section | null>('recording')
   const [config, setConfig] = useState<ScreenpipeConfig>(DEFAULT_CONFIG)
@@ -332,6 +401,14 @@ const SettingsPage: React.FC = () => {
   const [saveMessage, setSaveMessage] = useState<string | null>(null)
   const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([])
   const [backendStatus, setBackendStatus] = useState<ConnectionState>('idle')
+  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null)
+  const [storageLoading, setStorageLoading] = useState(false)
+  const [storageError, setStorageError] = useState<string | null>(null)
+  const [purgeOpen, setPurgeOpen] = useState(false)
+  const [purgeConfirm, setPurgeConfirm] = useState('')
+  const [purgeLoading, setPurgeLoading] = useState(false)
+  const [purgeMessage, setPurgeMessage] = useState<string | null>(null)
+  const [launchAgentMessage, setLaunchAgentMessage] = useState<string | null>(null)
   const [providerStatus, setProviderStatus] = useState<Record<AIProvider, ProviderStatus>>(() => {
     return PROVIDERS.reduce((acc, provider) => {
       acc[provider.id] = { state: 'idle', models: [] }
@@ -339,6 +416,7 @@ const SettingsPage: React.FC = () => {
     }, {} as Record<AIProvider, ProviderStatus>)
   })
   const [smartAudioApps, setSmartAudioApps] = useState<TriggerApp[]>(DEFAULT_TRIGGER_APPS)
+  const [storageService] = useState(() => new StorageService())
 
   const { preference, setPreference } = useTheme()
   const { enabled: developerMode, setEnabled: setDeveloperMode } = useDeveloperMode()
@@ -372,6 +450,30 @@ const SettingsPage: React.FC = () => {
       active = false
     }
   }, [setPreference])
+
+  useEffect(() => {
+    let active = true
+    const loadStorageStatus = async () => {
+      setStorageLoading(true)
+      setStorageError(null)
+      try {
+        const status = await storageService.status()
+        if (!active) return
+        setStorageStatus(status)
+      } catch (error) {
+        if (!active) return
+        setStorageError(error instanceof Error ? error.message : 'Failed to load storage status')
+      } finally {
+        if (active) setStorageLoading(false)
+      }
+    }
+
+    loadStorageStatus()
+
+    return () => {
+      active = false
+    }
+  }, [storageService])
 
   const defaultProvider = config.ai?.default?.provider ?? 'ollama'
 
@@ -530,6 +632,7 @@ const SettingsPage: React.FC = () => {
   }, [smartAudio.enabled, smartAudio.disableDelay, smartAudioApps])
 
   const storageConfig = config.storage?.autoCleanup ?? DEFAULT_CONFIG.storage!.autoCleanup!
+  const startOnLogin = config.app?.startOnLogin ?? DEFAULT_CONFIG.app!.startOnLogin!
 
   const updateStorage = (changes: Partial<ScreenpipeConfig['storage']>) => {
     updateConfig((prev) => ({
@@ -554,6 +657,41 @@ const SettingsPage: React.FC = () => {
         theme,
       },
     }))
+  }
+
+  const updateAppConfig = (changes: Partial<ScreenpipeConfig['app']>) => {
+    updateConfig((prev) => ({
+      ...prev,
+      app: {
+        ...prev.app,
+        ...changes,
+      },
+    }))
+  }
+
+  const updateTrajectoryConfig = (changes: Partial<ScreenpipeConfig['trajectory']>) => {
+    updateConfig((prev) => ({
+      ...prev,
+      trajectory: {
+        ...prev.trajectory,
+        ...changes,
+      },
+    }))
+  }
+
+  const handleStartOnLogin = async (value: boolean) => {
+    updateAppConfig({ startOnLogin: value })
+    setLaunchAgentMessage(null)
+    const result = await setTrajectoryLaunchAgentEnabled(value, {
+      roots: config.trajectory?.roots,
+    })
+    if (result.ok) {
+      setLaunchAgentMessage(
+        value ? 'LaunchAgent enabled for trajectory watch.' : 'LaunchAgent disabled.',
+      )
+    } else {
+      setLaunchAgentMessage(result.error ?? 'LaunchAgent update failed.')
+    }
   }
 
   const handleTestProvider = async (provider: AIProvider) => {
@@ -594,6 +732,39 @@ const SettingsPage: React.FC = () => {
     setBackendStatus(result.ok ? 'success' : 'error')
   }
 
+  const refreshStorageStatus = async () => {
+    setStorageLoading(true)
+    setStorageError(null)
+    try {
+      const status = await storageService.status()
+      setStorageStatus(status)
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : 'Failed to load storage status')
+    } finally {
+      setStorageLoading(false)
+    }
+  }
+
+  const handlePurgeStorage = async () => {
+    if (purgeConfirm.trim().toUpperCase() !== 'DELETE') {
+      setPurgeMessage('Type DELETE to confirm')
+      return
+    }
+    setPurgeLoading(true)
+    setPurgeMessage(null)
+    try {
+      const result = await storageService.purge(true)
+      setPurgeMessage(result.message)
+      setPurgeConfirm('')
+      setPurgeOpen(false)
+      await refreshStorageStatus()
+    } catch (error) {
+      setPurgeMessage(error instanceof Error ? error.message : 'Failed to purge data')
+    } finally {
+      setPurgeLoading(false)
+    }
+  }
+
   const handleSave = async () => {
     setSaveState('testing')
     setSaveMessage(null)
@@ -626,6 +797,8 @@ const SettingsPage: React.FC = () => {
       }
     }
 
+    const providerFailures: AIProvider[] = []
+
     for (const provider of providersToTest) {
       const settings = providerConfigs[provider]
       const payload: AIProviderConfig = {
@@ -646,21 +819,27 @@ const SettingsPage: React.FC = () => {
       }))
 
       if (!result.ok) {
-        setSaveState('error')
-        setSaveMessage(`AI provider ${provider} is not reachable.`)
-        return
+        providerFailures.push(provider)
       }
     }
 
     try {
       await writeConfig(config)
-      setSaveState('success')
-      setSaveMessage('Settings saved to ~/.screenpipe/config.json')
+      if (providerFailures.length > 0) {
+        setSaveState('warning')
+        setSaveMessage(`Saved with warnings: ${providerFailures.join(', ')} unreachable.`)
+      } else {
+        setSaveState('success')
+        setSaveMessage('Settings saved to ~/.screenpipe/config.json')
+      }
     } catch (error) {
       setSaveState('error')
       setSaveMessage(error instanceof Error ? error.message : 'Failed to save config')
     }
   }
+
+  const trajectoryRootsValue = (config.trajectory?.roots ?? []).join('\n')
+  const trajectoryIgnoreValue = (config.trajectory?.ignore ?? []).join('\n')
 
   if (isLoading) {
     return (
@@ -716,6 +895,20 @@ const SettingsPage: React.FC = () => {
             apps={smartAudioApps}
             onAppsChange={handleSmartAudioAppsChange}
           />
+          <div className="pt-2 border-t border-dark-border">
+            <ToggleField
+              label="Start on login"
+              description="Adds Screenpipe to macOS Login Items. Requires manual approval in System Settings."
+              checked={startOnLogin}
+              onChange={(value) => void handleStartOnLogin(value)}
+            />
+            <p className="text-xs text-zinc-500 mt-2">
+              Open System Settings → General → Login Items to allow automatic launch.
+            </p>
+            {launchAgentMessage && (
+              <p className="text-xs text-zinc-400 mt-2">{launchAgentMessage}</p>
+            )}
+          </div>
         </AccordionSection>
 
         <AccordionSection
@@ -756,6 +949,119 @@ const SettingsPage: React.FC = () => {
               })
             }
           />
+
+          <div className="rounded-xl border border-dark-border bg-dark-elevated/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Storage usage</p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  {storageStatus ? `Total ${formatBytes(storageStatus.totalBytes)}` : '—'}
+                </p>
+              </div>
+              <button
+                onClick={refreshStorageStatus}
+                disabled={storageLoading}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg
+                  bg-dark-surface hover:bg-dark-border text-xs text-zinc-300 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${storageLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+
+            {storageStatus && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg bg-dark-surface p-3">
+                  <p className="text-xs text-zinc-500">Data</p>
+                  <p className="text-sm text-zinc-100">
+                    {formatBytes(storageStatus.dataBytes)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-dark-surface p-3">
+                  <p className="text-xs text-zinc-500">Videos</p>
+                  <p className="text-sm text-zinc-100">
+                    {formatBytes(storageStatus.videosBytes)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-dark-surface p-3">
+                  <p className="text-xs text-zinc-500">Database</p>
+                  <p className="text-sm text-zinc-100">
+                    {formatBytes(storageStatus.dbBytes)}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {storageStatus && (
+              <div className="mt-3 text-xs text-zinc-500 space-y-1">
+                <div>Data dir: {storageStatus.dataDir}</div>
+                <div>Videos dir: {storageStatus.videosDir}</div>
+                <div>DB path: {storageStatus.dbPath}</div>
+              </div>
+            )}
+
+            {storageError && (
+              <div className="mt-3 rounded-lg border border-status-error/40 bg-status-error/10 p-2 text-xs text-status-error">
+                {storageError}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-status-error/30 bg-status-error/10 p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Delete all data</p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Removes recordings from disk and clears the database. This cannot be undone.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setPurgeOpen(true)
+                  setPurgeMessage(null)
+                }}
+                className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-medium hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+
+            {purgeOpen && (
+              <div className="mt-4 space-y-3">
+                <p className="text-xs text-zinc-400">
+                  Type DELETE to confirm.
+                </p>
+                <input
+                  value={purgeConfirm}
+                  onChange={(event) => setPurgeConfirm(event.target.value)}
+                  placeholder="DELETE"
+                  className="w-full max-w-[200px] rounded-lg border border-dark-border bg-dark-elevated px-3 py-2 text-xs text-zinc-100"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setPurgeOpen(false)
+                      setPurgeConfirm('')
+                      setPurgeMessage(null)
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-dark-surface text-xs text-zinc-300 hover:bg-dark-border"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handlePurgeStorage}
+                    disabled={purgeLoading}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 text-xs text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {purgeLoading ? 'Deleting...' : 'Confirm delete'}
+                  </button>
+                </div>
+                {purgeMessage && (
+                  <div className="text-xs text-zinc-400">{purgeMessage}</div>
+                )}
+              </div>
+            )}
+          </div>
         </AccordionSection>
 
         <AccordionSection
@@ -939,6 +1245,23 @@ const SettingsPage: React.FC = () => {
             checked={developerMode}
             onChange={(value) => setDeveloperMode(value)}
           />
+          <div className="rounded-xl border border-dark-border bg-dark-elevated/40 p-4 space-y-3">
+            <div className="text-sm font-medium text-zinc-200">Trajectory Watcher</div>
+            <TextAreaField
+              label="Roots"
+              value={trajectoryRootsValue}
+              placeholder="/Users/you/Projects\n/Users/you/Documents"
+              helper="One path per line. Required to enable the watcher."
+              onChange={(value) => updateTrajectoryConfig({ roots: parseList(value) })}
+            />
+            <TextAreaField
+              label="Ignore globs"
+              value={trajectoryIgnoreValue}
+              placeholder="**/.git/**\n**/node_modules/**"
+              helper="Optional ignore patterns for file watching."
+              onChange={(value) => updateTrajectoryConfig({ ignore: parseList(value) })}
+            />
+          </div>
           <TextField
             label="Backend URL"
             value={config.backendUrl ?? ''}
@@ -980,7 +1303,15 @@ const SettingsPage: React.FC = () => {
             </div>
           )}
           {!validationIssues.length && saveMessage && (
-            <span className={saveState === 'error' ? 'text-status-error' : 'text-status-ok'}>
+            <span
+              className={
+                saveState === 'error'
+                  ? 'text-status-error'
+                  : saveState === 'warning'
+                    ? 'text-status-warn'
+                    : 'text-status-ok'
+              }
+            >
               {saveMessage}
             </span>
           )}
